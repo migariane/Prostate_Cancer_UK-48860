@@ -2,8 +2,8 @@
 =================================================================================================
 Shing Fung Lee 1 2, Maja Nikšić 3,4 , Miguel Angel Luque-Fernandez 3, 5 (Senior and corresponding author)
 Authors' affiliations
-1 Department of Radiation Oncology, National University Cancer Institute, Singapore
-2 Department of Clinical Oncology, Tuen Mun Hospital, New Territories West Cluster, Hong Kong
+1 Department of Radiation Oncology, National University Cancer Institute, National University Hospital, Singapore
+2 Department of Clinical Oncology, Tuen Mun Hospital, New Territories West Cluster, Hospital Authority, Hong Kong
 3 Department of Non-Communicable Disease Epidemiology, London School of Hygiene and Tropical Medicine, London, United Kingdom
 4 Centre for Health Services Studies, University of Kent, Canterbury, United Kingdom
 5 Department of Statistics and Operations Research, University of Granada, Granada, Spain 
@@ -95,7 +95,9 @@ replace prostate_date = cancer_date2 if catcode=="C44" & catcode2=="C61"& prosta
 
 gen lastfu_prostate = cancer_date if catcode=="C61"
 replace lastfu_prostate = cancer_date2 if catcode2=="C61" & lastfu_prostate==.
-replace lastfu_prostate =date("2021, 1, 31", "YMD") if lastfu_prostate==.    //  last censoring date Jan 2021
+replace lastfu_prostate =date("2021, 1, 31", "YMD") if lastfu_prostate==.    //  last censoring date on 31 Jan 2021
+replace lastfu_prostate =date("2019, 7, 31", "YMD") if lastfu_prostate==.    //  last censoring date on 31 July 2019
+
 
 gen death = 1 if date_of_death_2!=.
 gen DOD = date_of_death_2
@@ -108,6 +110,16 @@ replace competing_risk = 2 if death==0 & prostate ==0 & s_40006_0_0!=""
 gen competing_risk_date = prostate_date
 replace competing_risk_date = DOD if death==1 & s_40006_0_0==""  
 replace competing_risk_date = cancer_date if prostate==0 & s_40006_0_0!=""  
+format %tdDD/NN/CCYY competing_risk_date
+
+gen competing_risk_date_new = prostate_date  // last censoring date on 31 July 2019
+format %tdDD/NN/CCYY competing_risk_date_new
+replace competing_risk_date_new = DOD if death==1 & s_40006_0_0=="" & DOD <= date("2019, 7, 31", "YMD")
+replace competing_risk_date_new = cancer_date if prostate==0 & s_40006_0_0!=""  & cancer_date <= date("2019, 7, 31", "YMD")
+replace competing_risk_date_new = date("2019, 7, 31", "YMD") if competing_risk_date_new ==.
+
+
+
 
 
 // Quintiles of Townsend deprivation score (qdi)
@@ -353,33 +365,40 @@ recode MetSyn_new 4/5=4 //4 or above =4
 tab MetSyn_new, missing
 tab MetSyn_new if prostate ==1, missing
 tab MetSyn_new if prostate ==0, missing
-tab MetSyn_new prostate, missing col chi
+tab MetSyn_new prostate,  col chi
+
+//Metabolic syndrome yes versus no
+tab MetSyn_bi, missing
+tab MetSyn_bi if prostate ==1, missing
+tab MetSyn_bi if prostate ==0, missing
+tab MetSyn_bi prostate,  col chi
+
 
 //Individual metabolic syndrome components
 tab hypertension, missing
 tab hypertension if prostate ==1, missing
 tab hypertension if prostate ==0, missing
-tab hypertension prostate, missing col chi
+tab hypertension prostate,  col chi
 
 tab hyperlipidemia, missing
 tab hyperlipidemia if prostate ==1, missing
 tab hyperlipidemia if prostate ==0, missing
-tab hyperlipidemia prostate, missing col chi
+tab hyperlipidemia prostate,  col chi
 
 tab low_HDL, missing
 tab low_HDL if prostate ==1, missing
 tab low_HDL if prostate ==0, missing
-tab low_HDL prostate, missing col chi
+tab low_HDL prostate,  col chi
 
 tab DM, missing
 tab DM if prostate ==1, missing
 tab DM if prostate ==0, missing
-tab DM prostate, missing col chi
+tab DM prostate,  col chi
 
-tab obese, missing
+tab obese
 tab obese if prostate ==1, missing
 tab obese if prostate ==0, missing
-tab obese prostate, missing col chi
+tab obese prostate,  col chi
 
 //Sociodemographic
 summarize age, detail //Age at recruitment (years), mean (SD) 
@@ -388,17 +407,17 @@ summarize age if prostate ==0, detail
 ttest age, by (prostate)
 ranksum age, by(prostate)
 
-tab marital, missing
+tab marital
 tab marital if prostate ==1, missing
 tab marital if prostate ==0, missing
-tab marital prostate, missing col chi
+tab marital prostate,  col chi
 
-tab ethnic, missing
+tab ethnic
 tab ethnic if prostate ==1, missing // 4= Black ethnicity
 tab ethnic if prostate ==0, missing 
 tab ethnic prostate, col chi
 
-tab qdi, missing
+tab qdi
 tab qdi if prostate ==1, missing // 5= most deprived, 1= most affluent townsend
 tab qdi if prostate ==0, missing 
 tab qdi prostate, col chi
@@ -438,7 +457,7 @@ tab ever_PSA prostate, missing col chi
 tab father_prostate, missing
 tab father_prostate if prostate==1, missing   // Father had CA prostate
 tab father_prostate if prostate==0, missing
-tab father_prostate prostate, missing col chi
+tab father_prostate prostate,  col chi
 
 tab sibling_prostate, missing
 tab sibling_prostate if prostate==1, missing   // Siblings had CA prostate
@@ -462,6 +481,17 @@ tab crp_cat prostate, missing col chi
 tab testosterone_mean prostate, missing col chi
 
 tab IGF_mean prostate, missing col chi
+
+
+
+
+
+// Median follow-up time from the baseline assessment foir the whole cohort
+summarize _t, detail
+display in smcl as text "Median follow-up (years): " as result %3.0f r(p50)
+
+// Median interval to prostate cancer incidence from date of baseline assessment 
+stsum, by(prostate)
 
 
 // Incidence rate of prostate cancer by variables
@@ -765,68 +795,385 @@ Note: Estimates are transformed only in the first equation.
 
 // After LASSO...however we run a flexible parametric model by a traditional methods of adding clinically important variables one by one, including some of the selected variables (by "adaptive") // 
  
-****************************// Analysis using IPCW and IPTW //************************************
+ 
+ 
+ 
+  
+ 
+ 
+****************************// Analysis using classic analysis //************************************
+
+// Codes for flexible parametric survival model (classic analysis)
+stset lastfu_prostate, failure(prostate==1) origin(time assessment_date) id(id) scale(365.25)    
+
+//univariable in Table 3
+local predictorvar "MetSyn_bi DM hypertension hyperlipidemia low_HDL obese "
+foreach p of local predictorvar {
+stpm2 `p'  if  s_40021_0_0!="SCOT", scale(h) df(4) eform
+}
+ 
+// Table 3 model 1 (metabolic syndrome + age + ethnicity + model 1 + deprivation index)
+stpm2 MetSyn_bi age_cat2 age_cat3 age_cat4 age_cat5 marital ethnic4 ethnic3 ethnic2 qdi2 qdi3 qdi4 qdi5  if  s_40021_0_0!="SCOT", scale(h) df(4) eform
+
+// Table 3 model 2 (model 1 + smoking + fruit intake + processed meat intake + BMI + exercise level)
+stpm2 MetSyn_bi age_cat2 age_cat3 age_cat4 age_cat5 marital ethnic4 ethnic3 ethnic2 qdi2 qdi3 qdi4 qdi5 smoking2 fruit_freq processedmeat_freq3 processedmeat_freq2 bmi ipaq3 ipaq2 if  s_40021_0_0!="SCOT", scale(h) df(4) eform
+
+// Table 3 model 3 (model 2 + ever had prostate-specific antigen test + father had prostate cancer + sibling had prostate cancer)
+stpm2 MetSyn_bi age_cat2 age_cat3 age_cat4 age_cat5 marital ethnic4 ethnic3 ethnic2 qdi2 qdi3 qdi4 qdi5 smoking2 fruit_freq processedmeat_freq3 processedmeat_freq2 bmi ipaq3 ipaq2 ever_PSA father_prostate sibling_prostate if  s_40021_0_0!="SCOT", scale(h) df(4) eform
+
+// Table 3 model 4 (model 3 + C-reactive protein level + Insulin-like growth factor and testosterone)
+stpm2 MetSyn_bi age_cat2 age_cat3 age_cat4 age_cat5 marital ethnic4 ethnic3 ethnic2 qdi2 qdi3 qdi4 qdi5 smoking2 fruit_freq processedmeat_freq3 processedmeat_freq2 bmi ipaq3 ipaq2 ever_PSA father_prostate sibling_prostate crp_cat IGF testosterone  if  s_40021_0_0!="SCOT", scale(h) df(4) eform
+ 
+// Individual metabolic syndrome conditions - can put in Supplementary Figure
+stpm2 obese DM hypertension hyperlipidemia low_HDL age_cat2 age_cat3 age_cat4 age_cat5 marital ethnic4 ethnic3 ethnic2 qdi2 qdi3 qdi4 qdi5 smoking2 fruit_freq processedmeat_freq3 processedmeat_freq2 bmi ipaq3 ipaq2 ever_PSA father_prostate sibling_prostate crp_cat IGF testosterone  if  s_40021_0_0!="SCOT", scale(h) df(4) eform
 
 
-// Codes for Estimating the Inverse Probability of Censor Weights (IPCW)   
-preserve 
-gen cens = 0
-replace cens = 1 if competing_risk==2
-logistic cens MetSyn_bi ipaq age ethnic ever_PSA father_prostate sibling_prostate bmi medications fruit_freq alc_freq_new_2 processedmeat_freq i.smoking i.qdi, nolog
-predict weight
-//gen ipcw = 1/weight 
-gen double ipcw = ((cens == 1) / weight) + ((cens == 0) / (1 - weight))
-summarize ipcw, detail
-
+ 
+ 
+****************************// Analysis using IPTW //************************************
 
 // Codes for Estimating the Inverse Probability of Treatment Weights (IPTW)   
-logistic MetSyn_bi ipaq age i.ethnic bmi medications fruit_freq alc_freq_new_2 processedmeat_freq i.smoking, nolog     
+logistic MetSyn_bi ipaq age i.ethnic bmi medications fruit_freq alc_freq_new_2 processedmeat_freq i.smoking, nolog       
 predict double ps             //ps = propensity score
 gen double HAW = ((MetSyn_bi == 1) / ps) + ((MetSyn_bi == 0) / (1 - ps))     // Compute the inverse probability Treatment weights (IPTW)
 summarize HAW, detail
 
-gen totalweight = ipcw*HAW
-
-stset competing_risk_date [pw=totalweight], failure(competing_risk==1) origin(time assessment_date) id(id) scale(365.25)    
+stset lastfu_prostate [pw=HAW], failure(prostate==1) origin(time assessment_date) id(id) scale(365.25)    
 
 //univariable in Table 3
-local predictorvar "MetSyn_bi obese DM hypertension hyperlipidemia low_HDL i.age_cat i.ethnic i.qdi i.smoking i.alc_freq_new_2 i.fruit_freq i.processedmeat_freq bmi i.medications i.ipaq i.ever_PSA i.father_prostate i.sibling_prostate i.crp_cat IGF testosterone"
+local predictorvar "MetSyn_bi DM hypertension hyperlipidemia low_HDL obese i.age_cat marital i.ethnic i.qdi i.smoking2 i.processedmeat_freq i.fruit_freq i.ipaq bmi i.ever_PSA i.father_prostate i.sibling_prostate i.crp_cat testosterone IGF"
 foreach p of local predictorvar {
-stpm2 `p', scale(h) df(4) eform
+stpm2 `p'  if  s_40021_0_0!="SCOT", scale(h) df(4) eform
 }
 
 
-// Table 3 model 1 (metabolic syndrome + age + ethnicity)
-stpm2 MetSyn_bi age_cat2 age_cat3 age_cat4 age_cat5 ethnic4 ethnic3 ethnic2, scale(h) df(4) eform
 
-// Table 3 model 2 (model 1 + deprivation index)
-stpm2 MetSyn_bi age_cat2 age_cat3 age_cat4 age_cat5 marital ethnic4 ethnic3 ethnic2 qdi2 qdi3 qdi4 qdi5, scale(h) df(4) eform
+// Table 3 model 1 (metabolic syndrome + age + ethnicity + model 1 + deprivation index)
+stpm2 MetSyn_bi age_cat2 age_cat3 age_cat4 age_cat5 marital ethnic4 ethnic3 ethnic2 qdi2 qdi3 qdi4 qdi5  if  s_40021_0_0!="SCOT", scale(h) df(4) eform
 
-// Table 3 model 3 (model 2 + smoking + fruit intake + processed meat intake + BMI + medications + exercise level)
-stpm2 MetSyn_bi age_cat2 age_cat3 age_cat4 age_cat5 marital ethnic4 ethnic3 ethnic2 qdi2 qdi3 qdi4 qdi5 smoking2 fruit_freq processedmeat_freq3 processedmeat_freq2 bmi medications4 medications3 medications2 ipaq3 ipaq2, scale(h) df(4) eform
+// Table 3 model 2 (model 1 + smoking + fruit intake + processed meat intake + BMI + exercise level)
+stpm2 MetSyn_bi age_cat2 age_cat3 age_cat4 age_cat5 marital ethnic4 ethnic3 ethnic2 qdi2 qdi3 qdi4 qdi5 smoking2 fruit_freq processedmeat_freq3 processedmeat_freq2 bmi ipaq3 ipaq2 if  s_40021_0_0!="SCOT", scale(h) df(4) eform
 
-// Table 3 model 4 (model 3 + ever had prostate-specific antigen test + father had prostate cancer + sibling had prostate cancer)
-stpm2 MetSyn_bi age_cat2 age_cat3 age_cat4 age_cat5 marital ethnic4 ethnic3 ethnic2 qdi2 qdi3 qdi4 qdi5 smoking2 fruit_freq processedmeat_freq3 processedmeat_freq2 bmi medications4 medications3 medications2 ipaq3 ipaq2 ever_PSA father_prostate sibling_prostate, scale(h) df(4) eform
+// Table 3 model 3 (model 2 + ever had prostate-specific antigen test + father had prostate cancer + sibling had prostate cancer)
+stpm2 MetSyn_bi age_cat2 age_cat3 age_cat4 age_cat5 marital ethnic4 ethnic3 ethnic2 qdi2 qdi3 qdi4 qdi5 smoking3 smoking2 fruit_freq processedmeat_freq3 processedmeat_freq2 bmi ipaq3 ipaq2 ever_PSA father_prostate sibling_prostate if  s_40021_0_0!="SCOT", scale(h) df(4) eform
 
-// Table 3 model 5 (model 4 + C-reactive protein level + Insulin-like growth factor and testosterone)
-stpm2 MetSyn_bi age_cat2 age_cat3 age_cat4 age_cat5 marital ethnic4 ethnic3 ethnic2 qdi2 qdi3 qdi4 qdi5 smoking2 fruit_freq processedmeat_freq3 processedmeat_freq2 bmi medications4 medications3 medications2 ipaq3 ipaq2 ever_PSA father_prostate sibling_prostate crp_cat IGF testosterone, scale(h) df(4) eform
+// Table 3 model 4 (model 3 + C-reactive protein level + Insulin-like growth factor and testosterone)
+stpm2 MetSyn_bi age_cat2 age_cat3 age_cat4 age_cat5 marital ethnic4 ethnic3 ethnic2 qdi2 qdi3 qdi4 qdi5 smoking3 smoking2 fruit_freq processedmeat_freq3 processedmeat_freq2 bmi ipaq3 ipaq2 ever_PSA father_prostate sibling_prostate crp_cat IGF testosterone  if  s_40021_0_0!="SCOT", scale(h) df(4) eform
  
 // Individual metabolic syndrome conditions - can put in Supplementary Figure
-stpm2 obese DM hypertension hyperlipidemia low_HDL age_cat2 age_cat3 age_cat4 age_cat5 marital ethnic4 ethnic3 ethnic2 qdi2 qdi3 qdi4 qdi5 smoking2 fruit_freq processedmeat_freq3 processedmeat_freq2 bmi medications4 medications3 medications2 ipaq3 ipaq2 ever_PSA father_prostate sibling_prostate crp_cat IGF testosterone, scale(h) df(4) eform
+stpm2 obese DM hypertension hyperlipidemia low_HDL age_cat2 age_cat3 age_cat4 age_cat5 marital ethnic4 ethnic3 ethnic2 qdi2 qdi3 qdi4 qdi5 smoking2 fruit_freq processedmeat_freq3 processedmeat_freq2 bmi ipaq3 ipaq2 ever_PSA father_prostate sibling_prostate crp_cat IGF testosterone  if  s_40021_0_0!="SCOT", scale(h) df(4) eform
 
  
 // Below are Standsurv codes
-stset competing_risk_date [pw=totalweight], failure(competing_risk==1) origin(time assessment_date) id(id) scale(365.25)    
-stpm2 MetSyn_bi age_cat2 age_cat3 age_cat4 age_cat5 ethnic4 ethnic3 ethnic2 qdi2 qdi3 qdi4 qdi5 smoking3 smoking2 fruit_freq processedmeat_freq3 processedmeat_freq2 bmi medications4 medications3 medications2 ipaq3 ipaq2 ever_PSA father_prostate sibling_prostate crp_cat IGF testosterone, scale(h) df(4) eform
+stset competing_risk_date_new [pw=HAW], failure(prostate==1) origin(time assessment_date) id(id) scale(365.25)    
+stpm2 MetSyn_bi age_cat2 age_cat3 age_cat4 age_cat5 marital ethnic4 ethnic3 ethnic2 qdi2 qdi3 qdi4 qdi5 smoking3 smoking2 fruit_freq processedmeat_freq3 processedmeat_freq2 bmi ipaq3 ipaq2 ever_PSA father_prostate sibling_prostate crp_cat IGF testosterone if  s_40021_0_0!="SCOT", scale(h) df(4) eform
 estimates store prostate_incidence
 
-stset competing_risk_date [pw=totalweight], failure(competing_risk==2) origin(time assessment_date) id(id) scale(365.25)    
-stpm2 MetSyn_bi age_cat2 age_cat3 age_cat4 age_cat5 ethnic4 ethnic3 ethnic2 qdi2 qdi3 qdi4 qdi5 smoking3 smoking2 fruit_freq processedmeat_freq3 processedmeat_freq2 bmi medications4 medications3 medications2 ipaq3 ipaq2 ever_PSA father_prostate sibling_prostate crp_cat IGF testosterone, scale(h) df(4) eform
+stset competing_risk_date_new [pw=HAW], failure(prostate==0) origin(time assessment_date) id(id) scale(365.25)    
+stpm2 MetSyn_bi age_cat2 age_cat3 age_cat4 age_cat5  ethnic4 ethnic3 ethnic2 qdi2 qdi3 qdi4 qdi5 smoking3 smoking2 fruit_freq processedmeat_freq3 processedmeat_freq2 bmi ipaq3 ipaq2 ever_PSA father_prostate sibling_prostate crp_cat IGF testosterone if  s_40021_0_0!="SCOT", scale(h) df(4) eform
 estimates store comp_incidence
 
 range tt 0 15 30
 
-standsurv if ethnic4!=. & smoking3!=. & qdi2!=. & fruit_freq!=. & ever_PSA!=. & father_prostate!=. & processedmeat_freq3!=. & sibling_prostate!=. & ipaq3!=. & crp_cat!=. & bmi!=. & medications4!=. & IGF!=. & testosterone!=., crmodels(prostate_incidence comp_incidence) cif ci timevar(tt) atvar(F) verbose 
+standsurv if ethnic4!=. & smoking3!=. & qdi2!=. & fruit_freq!=. & ever_PSA!=. & father_prostate!=. & processedmeat_freq3!=. & sibling_prostate!=. & ipaq3!=. & crp_cat!=. & bmi!=. & IGF!=. & testosterone!=., crmodels(prostate_incidence comp_incidence) cif ci timevar(tt) atvar(F) verbose 
+// Plot prostate_incidence 
+twoway  (rarea F_prostate_incidence_lci F_prostate_incidence_uci tt, color(red%30)) ///
+        (line F_prostate_incidence tt, color(red)) ///
+		(rarea F_comp_incidence_lci F_comp_incidence_uci tt, color(blue%30)) ///
+        (line F_comp_incidence tt, color(blue)) ///
+        , legend(order(2 "Prostate Incidence"  4 "No prostate cancer") cols(1) ring(0) pos(11)) ///
+		ylabel(,angle(h) format(%3.2f)) ///
+		xtitle("Follow-up (years)") ytitle("Cumulative incidence") ///
+		name(cifs, replace) ///
+		saving(prostate_incidence, replace) nodraw
+			
+	
+standsurv if ethnic4!=. & smoking3!=. & qdi2!=. & fruit_freq!=. & ever_PSA!=. & father_prostate!=. & processedmeat_freq3!=. & sibling_prostate!=. & ipaq3!=. & crp_cat!=. & bmi!=. & IGF!=. & testosterone!=., crmodels(prostate_incidence comp_incidence) cif ci timevar(tt) verbose ///
+    at1(MetSyn_bi 1) at2(MetSyn_bi 0) atvars(F_Met1 F_Met2)  atref(2) ///
+    contrast(ratio) contrastvars(r1)   //ratio
+	
+
+standsurv if ethnic4!=. & smoking3!=. & qdi2!=. & fruit_freq!=. & ever_PSA!=. & father_prostate!=. & processedmeat_freq3!=. & sibling_prostate!=. & ipaq3!=. & crp_cat!=. & bmi!=. & IGF!=. & testosterone!=., crmodels(prostate_incidence comp_incidence) cif ci timevar(tt) verbose ///
+    at1(MetSyn_bi 1) at2(MetSyn_bi 0) atvars(F_Met1_d F_Met2_d)  atref(2) ///
+    contrast(difference) contrastvars(d1)  //difference
+	
+// Plot prostate cancer incidence based on metabolic syndrome
+twoway  (rarea F_Met1_d_prostate_incidence_lci F_Met1_d_prostate_incidence_uci tt, color(red%30)) ///
+        (line F_Met1_d_prostate_incidence tt, color(red)) ///
+        (rarea F_Met2_d_prostate_incidence_lci F_Met2_d_prostate_incidence_uci tt, color(blue%30)) ///
+		(line F_Met2_d_prostate_incidence tt, color(blue)) ///
+         , legend(order(2 "Metabolic Syndrome" 4 "No Metabolic Syndrome") cols(1) ring(0) pos(11)) ///
+		ylabel(, angle(h) format(%3.2f)) ///
+		xtitle("Follow-up (years)") ytitle("Cumulative incidence") ///
+		name(metabolic, replace) ///
+		saving(metabolic, replace) nodraw
+
+// Plot on competing risks based on metabolic syndrome
+twoway  (rarea F_Met1_comp_incidence_lci F_Met1_comp_incidence_uci tt, color(red%30)) ///
+        (line F_Met1_comp_incidence tt, color(red)) ///
+		(rarea F_Met2_comp_incidence_lci F_Met2_comp_incidence_uci tt, color(blue%30)) ///
+        (line F_Met2_comp_incidence tt, color(blue)) ///
+        , legend(order(1 "Metabolic Syndrome" 3 "No Metabolic Syndrome") cols(1) ring(0) pos(11)) ///
+		ylabel(, angle(h) format(%3.2f)) ///
+		xtitle("Follow-Up (Years)") ytitle("Adjusted cause-specific cumulative incidence") ///
+		name(metabolic, replace) ///
+		saving(metabolic_othercancer_death, replace) nodraw
+
+stset competing_risk_date_new [pw=HAW], failure(prostate==1) origin(time assessment_date) id(id) scale(365.25)    
+stpm2 obese DM hypertension hyperlipidemia low_HDL age_cat2 age_cat3 age_cat4 age_cat5 marital ethnic4 ethnic3 ethnic2 qdi2 qdi3 qdi4 qdi5 smoking3 smoking2 fruit_freq processedmeat_freq3 processedmeat_freq2 bmi ipaq3 ipaq2 ever_PSA father_prostate sibling_prostate crp_cat IGF testosterone if  s_40021_0_0!="SCOT", scale(h) df(4) eform
+estimates store prostate_incidence2
+
+stset competing_risk_date_new [pw=HAW], failure(prostate==0) origin(time assessment_date) id(id) scale(365.25)    
+stpm2 obese DM hypertension hyperlipidemia low_HDL age_cat2 age_cat3 age_cat4 age_cat5  ethnic4 ethnic3 ethnic2 qdi2 qdi3 qdi4 qdi5 smoking3 smoking2 fruit_freq processedmeat_freq3 processedmeat_freq2 bmi ipaq3 ipaq2 ever_PSA father_prostate sibling_prostate crp_cat IGF testosterone if  s_40021_0_0!="SCOT", scale(h) df(4) eform
+estimates store comp_incidence2
+
+
+// Plot prostate cancer incidence based on individual metabolic syndrome component - DM
+standsurv if ethnic4!=. & smoking3!=. & qdi2!=. & fruit_freq!=. & ever_PSA!=. & father_prostate!=. & processedmeat_freq3!=. & sibling_prostate!=. & ipaq3!=. & crp_cat!=. & bmi!=. & IGF!=. & testosterone!=., crmodels(prostate_incidence2 comp_incidence2) cif ci timevar(tt) verbose at1(DM 1) at2(DM 0) atvars(F_DM1 F_DM2) atref(2) contrast(ratio) contrastvars(R_DM)
+
+standsurv if ethnic4!=. & smoking3!=. & qdi2!=. & fruit_freq!=. & ever_PSA!=. & father_prostate!=. & processedmeat_freq3!=. & sibling_prostate!=. & ipaq3!=. & crp_cat!=. & bmi!=. & IGF!=. & testosterone!=., crmodels(prostate_incidence2 comp_incidence2) cif ci timevar(tt) verbose at1(DM 1) at2(DM 0) atvars(F_DM1 F_DM2) atref(2) contrast(difference) contrastvars(D_DM)
+	
+twoway  (rarea F_DM1_prostate_incidence2_lci F_DM1_prostate_incidence2_uci tt, color(red%30)) ///
+        (line F_DM1_prostate_incidence2 tt, color(red)) ///
+        (rarea F_DM2_prostate_incidence2_lci F_DM2_prostate_incidence2_uci tt, color(blue%30)) ///
+		(line F_DM2_prostate_incidence2 tt, color(blue)) ///
+         , legend(order(2 "Diabetes" 4 "No Diabetes") cols(1) ring(0) pos(11)) ///
+		ylabel(, angle(h) format(%3.2f)) ///
+		xtitle("Follow-Up (Years)") ytitle("Adjusted cause-specific cumulative incidence") ///
+		name(metabolic_DM, replace) ///
+		saving(metabolic_DM, replace) nodraw
+	
+standsurv if ethnic4!=. & smoking3!=. & qdi2!=. & fruit_freq!=. & ever_PSA!=. & father_prostate!=. & processedmeat_freq3!=. & sibling_prostate!=. & ipaq3!=. & crp_cat!=. & bmi!=. & IGF!=. & testosterone!=., crmodels(prostate_incidence2 comp_incidence2) cif ci timevar(tt) verbose ///
+    at1(obese 1) at2(obese 0) atvars(F_ob1 F_ob2)  atref(2) ///
+    contrast(ratio) contrastvars(R_ob)
+
+standsurv if ethnic4!=. & smoking3!=. & qdi2!=. & fruit_freq!=. & ever_PSA!=. & father_prostate!=. & processedmeat_freq3!=. & sibling_prostate!=. & ipaq3!=. & crp_cat!=. & bmi!=. & IGF!=. & testosterone!=., crmodels(prostate_incidence2 comp_incidence2) cif ci timevar(tt) verbose ///
+    at1(obese 1) at2(obese 0) atvars(F_ob1 F_ob2)  atref(2) ///
+    contrast(difference) contrastvars(D_ob)
+	
+// Plot prostate cancer incidence based on individual metabolic syndrome component - obesity
+twoway  (rarea F_ob1_prostate_incidence2_lci F_ob1_prostate_incidence2_uci tt, color(red%30)) ///
+        (line F_ob1_prostate_incidence2 tt, color(red)) ///
+        (rarea F_ob2_prostate_incidence2_lci F_ob2_prostate_incidence2_uci tt, color(blue%30)) ///
+		(line F_ob2_prostate_incidence2 tt, color(blue)) ///
+         , legend(order(2 "Obesity" 4 "No Obesity") cols(1) ring(0) pos(11)) ///
+		ylabel(, angle(h) format(%3.2f)) ///
+		xtitle("Follow-Up (Years)") ytitle("Adjusted cause-specific cumulative incidence") ///
+		name(metabolic_obesity, replace) ///
+		saving(metabolic_obesity, replace) nodraw
+						
+standsurv if ethnic4!=. & smoking3!=. & qdi2!=. & fruit_freq!=. & ever_PSA!=. & father_prostate!=. & processedmeat_freq3!=. & sibling_prostate!=. & ipaq3!=. & crp_cat!=. & bmi!=. & IGF!=. & testosterone!=., crmodels(prostate_incidence2 comp_incidence2) cif ci timevar(tt) verbose ///
+    at1(hypertension 1) at2(hypertension 0) atvars(F_HT1 F_HT2)  atref(2) ///
+    contrast(ratio) contrastvars(r_HT)
+
+standsurv if ethnic4!=. & smoking3!=. & qdi2!=. & fruit_freq!=. & ever_PSA!=. & father_prostate!=. & processedmeat_freq3!=. & sibling_prostate!=. & ipaq3!=. & crp_cat!=. & bmi!=. & IGF!=. & testosterone!=., crmodels(prostate_incidence2 comp_incidence2) cif ci timevar(tt) verbose ///
+    at1(hypertension 1) at2(hypertension 0) atvars(F_HT1 F_HT2)  atref(2) ///
+    contrast(difference) contrastvars(D_HT)
+	
+// Plot prostate cancer incidence based on individual metabolic syndrome component - hypertension
+twoway  (rarea F_HT1_prostate_incidence2_lci F_HT1_prostate_incidence2_uci tt, color(red%30)) ///
+        (line F_HT1_prostate_incidence2 tt, color(red)) ///
+        (rarea F_HT2_prostate_incidence2_lci F_HT2_prostate_incidence2_uci tt, color(blue%30)) ///
+		(line F_HT2_prostate_incidence2 tt, color(blue)) ///
+         , legend(order(2 "Hypertension" 4 "No Hypertension") cols(1) ring(0) pos(11)) ///
+		ylabel(, angle(h) format(%3.2f)) ///
+		xtitle("Follow-Up (Years)") ytitle("Adjusted cause-specific cumulative incidence") ///
+		name(metabolic_hypertension, replace) ///
+		saving(metabolic_hypertension, replace) nodraw
+
+				
+	
+standsurv if ethnic4!=. & smoking3!=. & qdi2!=. & fruit_freq!=. & ever_PSA!=. & father_prostate!=. & processedmeat_freq3!=. & sibling_prostate!=. & ipaq3!=. & crp_cat!=. & bmi!=. & IGF!=. & testosterone!=., crmodels(prostate_incidence2 comp_incidence2) cif ci timevar(tt) verbose ///
+    at1(hyperlipidemia 1) at2(hyperlipidemia 0) atvars(F_HL1 F_HL2)  atref(2) ///
+    contrast(ratio) contrastvars(r_HL)
+	
+standsurv if ethnic4!=. & smoking3!=. & qdi2!=. & fruit_freq!=. & ever_PSA!=. & father_prostate!=. & processedmeat_freq3!=. & sibling_prostate!=. & ipaq3!=. & crp_cat!=. & bmi!=. & IGF!=. & testosterone!=., crmodels(prostate_incidence2 comp_incidence2) cif ci timevar(tt) verbose ///
+    at1(hyperlipidemia 1) at2(hyperlipidemia 0) atvars(F_HL1 F_HL2)  atref(2) ///
+    contrast(difference) contrastvars(D_HL)
+	
+// Plot prostate cancer incidence based on individual metabolic syndrome component - hyperlipidemia
+twoway  (rarea F_HL1_prostate_incidence2_lci F_HL1_prostate_incidence2_uci tt, color(red%30)) ///
+        (line F_HL1_prostate_incidence2 tt, color(red)) ///
+        (rarea F_HL2_prostate_incidence2_lci F_HL2_prostate_incidence2_uci tt, color(blue%30)) ///
+		(line F_HL2_prostate_incidence2 tt, color(blue)) ///
+         , legend(order(2 "Hyperlipidemia" 4 "No Hyperlipidemia") cols(1) ring(0) pos(11)) ///
+		ylabel(, angle(h) format(%3.2f)) ///
+		xtitle("Follow-Up (Years)") ytitle("Adjusted cause-specific cumulative incidence") ///
+		name(metabolic_hyperlipidemia, replace) ///
+		saving(metabolic_hyperlipidemia, replace) nodraw
+
+			
+standsurv if ethnic4!=. & smoking3!=. & qdi2!=. & fruit_freq!=. & ever_PSA!=. & father_prostate!=. & processedmeat_freq3!=. & sibling_prostate!=. & ipaq3!=. & crp_cat!=. & bmi!=. & IGF!=. & testosterone!=., crmodels(prostate_incidence2 comp_incidence2) cif ci timevar(tt) verbose ///
+    at1(low_HDL 1) at2(low_HDL 0) atvars(F_low1 F_low2)  atref(2) ///
+    contrast(ratio) contrastvars(r_low)
+	
+standsurv if ethnic4!=. & smoking3!=. & qdi2!=. & fruit_freq!=. & ever_PSA!=. & father_prostate!=. & processedmeat_freq3!=. & sibling_prostate!=. & ipaq3!=. & crp_cat!=. & bmi!=. & IGF!=. & testosterone!=., crmodels(prostate_incidence2 comp_incidence2) cif ci timevar(tt) verbose ///
+    at1(low_HDL 1) at2(low_HDL 0) atvars(F_low1 F_low2)  atref(2) ///
+    contrast(difference) contrastvars(D_low)
+	
+	
+// Plot prostate cancer incidence based on individual metabolic syndrome component - low HDL level
+twoway  (rarea F_low1_prostate_incidence2_lci F_low1_prostate_incidence2_uci tt, color(red%30)) ///
+        (line F_low1_prostate_incidence2 tt, color(red)) ///
+        (rarea F_low2_prostate_incidence2_lci F_low2_prostate_incidence2_uci tt, color(blue%30)) ///
+		(line F_low2_prostate_incidence2 tt, color(blue)) ///
+         , legend(order(2 "Low HDL" 4 "HDL Not Low") cols(1) ring(0) pos(11)) ///
+		ylabel(, angle(h) format(%3.2f)) ///
+		xtitle("Follow-Up (Years)") ytitle("Adjusted cause-specific cumulative incidence") ///
+		name(metabolic_lowHDL, replace) ///
+		saving(metabolic_lowHDL, replace) nodraw
+restore
+
+
+
+
+
+
+// Below are Standsurv codes
+stset competing_risk_otherdeath_date [pw=HAW], failure(competing_risk_otherdeath==1) origin(time assessment_date) id(id) scale(365.25)    
+stpm2 MetSyn_bi age_cat2 age_cat3 age_cat4 age_cat5 marital ethnic4 ethnic3 ethnic2 qdi2 qdi3 qdi4 qdi5 smoking3 smoking2 fruit_freq processedmeat_freq3 processedmeat_freq2 bmi ipaq3 ipaq2 ever_PSA father_prostate sibling_prostate crp_cat IGF testosterone if  s_40021_0_0!="SCOT", scale(h) df(4) eform
+estimates store prostate_incidence
+
+stset competing_risk_otherdeath_date [pw=HAW], failure(competing_risk_otherdeath==2) origin(time assessment_date) id(id) scale(365.25)    
+stpm2 MetSyn_bi age_cat2 age_cat3 age_cat4 age_cat5  ethnic4 ethnic3 ethnic2 qdi2 qdi3 qdi4 qdi5 smoking3 smoking2 fruit_freq processedmeat_freq3 processedmeat_freq2 bmi ipaq3 ipaq2 ever_PSA father_prostate sibling_prostate crp_cat IGF testosterone if  s_40021_0_0!="SCOT", scale(h) df(4) eform
+estimates store comp_incidence
+
+stset competing_risk_otherdeath_date [pw=HAW], failure(competing_risk_otherdeath==1) origin(time assessment_date) id(id) scale(365.25)    
+stpm2 obese DM hypertension hyperlipidemia low_HDL age_cat2 age_cat3 age_cat4 age_cat5 marital ethnic4 ethnic3 ethnic2 qdi2 qdi3 qdi4 qdi5 smoking3 smoking2 fruit_freq processedmeat_freq3 processedmeat_freq2 bmi ipaq3 ipaq2 ever_PSA father_prostate sibling_prostate crp_cat IGF testosterone if  s_40021_0_0!="SCOT", scale(h) df(4) eform
+estimates store prostate_incidence2
+
+stset competing_risk_otherdeath_date [pw=HAW], failure(competing_risk_otherdeath==2) origin(time assessment_date) id(id) scale(365.25)    
+stpm2 obese DM hypertension hyperlipidemia low_HDL age_cat2 age_cat3 age_cat4 age_cat5  ethnic4 ethnic3 ethnic2 qdi2 qdi3 qdi4 qdi5 smoking3 smoking2 fruit_freq processedmeat_freq3 processedmeat_freq2 bmi ipaq3 ipaq2 ever_PSA father_prostate sibling_prostate crp_cat IGF testosterone if  s_40021_0_0!="SCOT", scale(h) df(4) eform
+estimates store comp_incidence2
+
+
+standsurv if ethnic4!=. & smoking3!=. & qdi2!=. & marital!=. & fruit_freq!=. & ever_PSA!=. & father_prostate!=. & processedmeat_freq3!=. & sibling_prostate!=. & ipaq3!=. & crp_cat!=. & bmi!=. & IGF!=. & testosterone!=., crmodels(prostate_incidence comp_incidence) cif ci timevar(tt) verbose ///
+    at1(MetSyn_bi 1) at2(MetSyn_bi 0) atvars(F_Met1_d2 F_Met2_d2)  atref(2) ///
+    contrast(difference) contrastvars(d12)  //difference
+
+
+standsurv if ethnic4!=. & smoking3!=. & qdi2!=. & marital!=. & fruit_freq!=. & ever_PSA!=. & father_prostate!=. & processedmeat_freq3!=. & sibling_prostate!=. & ipaq3!=. & crp_cat!=. & bmi!=. & IGF!=. & testosterone!=., crmodels(prostate_incidence2 comp_incidence2) cif ci timevar(tt) verbose at1(DM 1) at2(DM 0) atvars(F_DM12 F_DM22) atref(2) contrast(difference) contrastvars(D_DM2)
+
+
+standsurv if ethnic4!=. & smoking3!=. & qdi2!=. & marital!=. & fruit_freq!=. & ever_PSA!=. & father_prostate!=. & processedmeat_freq3!=. & sibling_prostate!=. & ipaq3!=. & crp_cat!=. & bmi!=. & IGF!=. & testosterone!=., crmodels(prostate_incidence2 comp_incidence2) cif ci timevar(tt) verbose ///
+    at1(obese 1) at2(obese 0) atvars(F_ob12 F_ob22)  atref(2) ///
+    contrast(difference) contrastvars(D_ob2)
+
+standsurv if ethnic4!=. & smoking3!=. & qdi2!=. & marital!=. & fruit_freq!=. & ever_PSA!=. & father_prostate!=. & processedmeat_freq3!=. & sibling_prostate!=. & ipaq3!=. & crp_cat!=. & bmi!=. & IGF!=. & testosterone!=., crmodels(prostate_incidence2 comp_incidence2) cif ci timevar(tt) verbose ///
+    at1(hypertension 1) at2(hypertension 0) atvars(F_HT12 F_HT22)  atref(2) ///
+    contrast(difference) contrastvars(D_HT2)	
+standsurv if ethnic4!=. & smoking3!=. & qdi2!=. & marital!=. & fruit_freq!=. & ever_PSA!=. & father_prostate!=. & processedmeat_freq3!=. & sibling_prostate!=. & ipaq3!=. & crp_cat!=. & bmi!=. & IGF!=. & testosterone!=., crmodels(prostate_incidence2 comp_incidence2) cif ci timevar(tt) verbose ///
+    at1(hyperlipidemia 1) at2(hyperlipidemia 0) atvars(F_HL12 F_HL22)  atref(2) ///
+    contrast(difference) contrastvars(D_HL2)
+standsurv if ethnic4!=. & smoking3!=. & qdi2!=. & marital!=. & fruit_freq!=. & ever_PSA!=. & father_prostate!=. & processedmeat_freq3!=. & sibling_prostate!=. & ipaq3!=. & crp_cat!=. & bmi!=. & IGF!=. & testosterone!=., crmodels(prostate_incidence2 comp_incidence2) cif ci timevar(tt) verbose ///
+    at1(low_HDL 1) at2(low_HDL 0) atvars(F_low12 F_low22)  atref(2) ///
+    contrast(difference) contrastvars(D_low2)
+
+list F_Met1_prostate_incidence F_Met1_prostate_incidence_lci F_Met1_prostate_incidence_uci if tt==5, noobs ab(30)  // metabolic syndrome
+list F_Met2_prostate_incidence F_Met2_prostate_incidence_lci F_Met2_prostate_incidence_uci if tt==1, noobs ab(30)  // no metabolic syndrome
+list r1_prostate_incidence r1_prostate_incidence_lci r1_prostate_incidence_uci tt if tt<=5 , noobs ab(30)   //ratio of metabolic syndrome vs no metabolic syndrome 5 years
+list r1_prostate_incidence r1_prostate_incidence_lci r1_prostate_incidence_uci tt if tt<=10 , noobs ab(30)   //ratio of metabolic syndrome vs no metabolic syndrome 10 years
+list r1_prostate_incidence r1_prostate_incidence_lci r1_prostate_incidence_uci tt if tt<=15 , noobs ab(30)   //ratio of metabolic syndrome vs no metabolic syndrome 15 years
+
+
+
+//Previous analysis//
+list d1_prostate_incidence d1_prostate_incidence_lci d1_prostate_incidence_uci tt if tt<=1 , noobs ab(30)   //Risk difference of metabolic syndrome vs no metabolic syndrome 1 years
+list d1_prostate_incidence d1_prostate_incidence_lci d1_prostate_incidence_uci tt if tt<=3 , noobs ab(30)   //Risk difference of metabolic syndrome vs no metabolic syndrome 3 years
+list d1_prostate_incidence d1_prostate_incidence_lci d1_prostate_incidence_uci tt if tt<=5 , noobs ab(30)   //Risk difference of metabolic syndrome vs no metabolic syndrome 5 years
+list d1_prostate_incidence d1_prostate_incidence_lci d1_prostate_incidence_uci tt if tt<=10 , noobs ab(30)   //Risk difference of metabolic syndrome vs no metabolic syndrome 10 years
+
+list D_DM_prostate_incidence2 D_DM_prostate_incidence2_lci D_DM_prostate_incidence2_uci tt if tt<=1 , noobs ab(30)   //Risk difference of DM vs no DM 1 years
+list D_DM_prostate_incidence2 D_DM_prostate_incidence2_lci D_DM_prostate_incidence2_uci tt if tt<=3 , noobs ab(30)   //Risk difference of DM vs no DM 3 years
+list D_DM_prostate_incidence2 D_DM_prostate_incidence2_lci D_DM_prostate_incidence2_uci tt if tt<=5 , noobs ab(30)  //Risk difference of DM vs no DM 5 years
+list D_DM_prostate_incidence2 D_DM_prostate_incidence2_lci D_DM_prostate_incidence2_uci tt if tt<=10 , noobs ab(30)   //Risk difference of DM vs no DM 10 years
+
+list D_ob_prostate_incidence2 D_ob_prostate_incidence2_lci D_ob_prostate_incidence2_uci tt if tt<=1 , noobs ab(30)   //Risk difference of obesity vs no obesity 1 years
+list D_ob_prostate_incidence2 D_ob_prostate_incidence2_lci D_ob_prostate_incidence2_uci tt if tt<=3 , noobs ab(30)   //Risk difference of obesity vs no obesity 3 years
+list D_ob_prostate_incidence2 D_ob_prostate_incidence2_lci D_ob_prostate_incidence2_uci tt if tt<=5 , noobs ab(30)  //Risk difference of obesity vs no obesity 5 years
+list D_ob_prostate_incidence2 D_ob_prostate_incidence2_lci D_ob_prostate_incidence2_uci tt if tt<=10 , noobs ab(30)   //Risk difference of obesity vs no obesity 10 years
+
+list D_HT_prostate_incidence2 D_HT_prostate_incidence2_lci D_HT_prostate_incidence2_uci tt if tt<=1 , noobs ab(30)   //Risk difference of hypertension vs no hypertension 1 years
+list D_HT_prostate_incidence2 D_HT_prostate_incidence2_lci D_HT_prostate_incidence2_uci tt if tt<=3 , noobs ab(30)   //Risk difference of hypertension vs no hypertension 3 years
+list D_HT_prostate_incidence2 D_HT_prostate_incidence2_lci D_HT_prostate_incidence2_uci tt if tt<=5 , noobs ab(30)  //Risk difference of hypertension vs no hypertension 5 years
+list D_HT_prostate_incidence2 D_HT_prostate_incidence2_lci D_HT_prostate_incidence2_uci tt if tt<=10 , noobs ab(30)   //Risk difference of hypertension vs no hypertension 10 years
+
+list D_HL_prostate_incidence2 D_HL_prostate_incidence2_lci D_HL_prostate_incidence2_uci tt if tt<=1 , noobs ab(30)   //Risk difference of hyperlipidemia vs no hyperlipidemia 1 years
+list D_HL_prostate_incidence2 D_HL_prostate_incidence2_lci D_HL_prostate_incidence2_uci tt if tt<=3 , noobs ab(30)   //Risk difference of hyperlipidemia vs no hyperlipidemia 3 years
+list D_HL_prostate_incidence2 D_HL_prostate_incidence2_lci D_HL_prostate_incidence2_uci tt if tt<=5 , noobs ab(30)  //Risk difference of hyperlipidemia vs no hyperlipidemia 5 years
+list D_HL_prostate_incidence2 D_HL_prostate_incidence2_lci D_HL_prostate_incidence2_uci tt if tt<=10 , noobs ab(30)   //Risk difference of hyperlipidemia vs no hyperlipidemia 10 years
+
+list D_low_prostate_incidence2 D_low_prostate_incidence2_lci D_low_prostate_incidence2_uci tt if tt<=1 , noobs ab(30)   //Risk difference of low HDL-C vs no low HDL-C 1 years
+list D_low_prostate_incidence2 D_low_prostate_incidence2_lci D_low_prostate_incidence2_uci tt if tt<=3 , noobs ab(30)   //Risk difference of low HDL-C vs no low HDL-C 3 years
+list D_low_prostate_incidence2 D_low_prostate_incidence2_lci D_low_prostate_incidence2_uci tt if tt<=5 , noobs ab(30)  //Risk difference of low HDL-C vs no low HDL-C 5 years
+list D_low_prostate_incidence2 D_low_prostate_incidence2_lci D_low_prostate_incidence2_uci tt if tt<=10 , noobs ab(30)   //Risk difference of low HDL-C vs no low HDL-C 10 years
+
+
+// Analysis on 16/8/2023//
+list d12_prostate_incidence d12_prostate_incidence_lci d12_prostate_incidence_uci tt if tt<=1 , noobs ab(30)   //Risk difference of metabolic syndrome vs no metabolic syndrome 1 years
+list d12_prostate_incidence d12_prostate_incidence_lci d12_prostate_incidence_uci tt if tt<=3 , noobs ab(30)   //Risk difference of metabolic syndrome vs no metabolic syndrome 3 years
+list d12_prostate_incidence d12_prostate_incidence_lci d12_prostate_incidence_uci tt if tt<=5 , noobs ab(30)   //Risk difference of metabolic syndrome vs no metabolic syndrome 5 years
+list d12_prostate_incidence d12_prostate_incidence_lci d12_prostate_incidence_uci tt if tt<=10 , noobs ab(30)   //Risk difference of metabolic syndrome vs no metabolic syndrome 10 years
+
+list D_DM2_prostate_incidence2 D_DM2_prostate_incidence2_lci D_DM2_prostate_incidence2_uci tt if tt<=1 , noobs ab(30)   //Risk difference of DM vs no DM 1 years
+list D_DM2_prostate_incidence2 D_DM2_prostate_incidence2_lci D_DM2_prostate_incidence2_uci tt if tt<=3 , noobs ab(30)   //Risk difference of DM vs no DM 3 years
+list D_DM2_prostate_incidence2 D_DM2_prostate_incidence2_lci D_DM2_prostate_incidence2_uci tt if tt<=5 , noobs ab(30)  //Risk difference of DM vs no DM 5 years
+list D_DM2_prostate_incidence2 D_DM2_prostate_incidence2_lci D_DM2_prostate_incidence2_uci tt if tt<=10 , noobs ab(30)   //Risk difference of DM vs no DM 10 years
+
+list D_ob2_prostate_incidence2 D_ob2_prostate_incidence2_lci D_ob2_prostate_incidence2_uci tt if tt<=1 , noobs ab(30)   //Risk difference of obesity vs no obesity 1 years
+list D_ob2_prostate_incidence2 D_ob2_prostate_incidence2_lci D_ob2_prostate_incidence2_uci tt if tt<=3 , noobs ab(30)   //Risk difference of obesity vs no obesity 3 years
+list D_ob2_prostate_incidence2 D_ob2_prostate_incidence2_lci D_ob2_prostate_incidence2_uci tt if tt<=5 , noobs ab(30)  //Risk difference of obesity vs no obesity 5 years
+list D_ob2_prostate_incidence2 D_ob2_prostate_incidence2_lci D_ob2_prostate_incidence2_uci tt if tt<=10 , noobs ab(30)   //Risk difference of obesity vs no obesity 10 years
+
+list D_HT2_prostate_incidence2 D_HT2_prostate_incidence2_lci D_HT2_prostate_incidence2_uci tt if tt<=1 , noobs ab(30)   //Risk difference of hypertension vs no hypertension 1 years
+list D_HT2_prostate_incidence2 D_HT2_prostate_incidence2_lci D_HT2_prostate_incidence2_uci tt if tt<=3 , noobs ab(30)   //Risk difference of hypertension vs no hypertension 3 years
+list D_HT2_prostate_incidence2 D_HT2_prostate_incidence2_lci D_HT2_prostate_incidence2_uci tt if tt<=5 , noobs ab(30)  //Risk difference of hypertension vs no hypertension 5 years
+list D_HT2_prostate_incidence2 D_HT2_prostate_incidence2_lci D_HT2_prostate_incidence2_uci tt if tt<=10 , noobs ab(30)   //Risk difference of hypertension vs no hypertension 10 years
+
+list D_HL2_prostate_incidence2 D_HL2_prostate_incidence2_lci D_HL2_prostate_incidence2_uci tt if tt<=1 , noobs ab(30)   //Risk difference of hyperlipidemia vs no hyperlipidemia 1 years
+list D_HL2_prostate_incidence2 D_HL2_prostate_incidence2_lci D_HL2_prostate_incidence2_uci tt if tt<=3 , noobs ab(30)   //Risk difference of hyperlipidemia vs no hyperlipidemia 3 years
+list D_HL2_prostate_incidence2 D_HL2_prostate_incidence2_lci D_HL2_prostate_incidence2_uci tt if tt<=5 , noobs ab(30)  //Risk difference of hyperlipidemia vs no hyperlipidemia 5 years
+list D_HL2_prostate_incidence2 D_HL2_prostate_incidence2_lci D_HL2_prostate_incidence2_uci tt if tt<=10 , noobs ab(30)   //Risk difference of hyperlipidemia vs no hyperlipidemia 10 years
+
+list D_low2_prostate_incidence2 D_low2_prostate_incidence2_lci D_low2_prostate_incidence2_uci tt if tt<=1 , noobs ab(30)   //Risk difference of low HDL-C vs no low HDL-C 1 years
+list D_low2_prostate_incidence2 D_low2_prostate_incidence2_lci D_low2_prostate_incidence2_uci tt if tt<=3 , noobs ab(30)   //Risk difference of low HDL-C vs no low HDL-C 3 years
+list D_low2_prostate_incidence2 D_low2_prostate_incidence2_lci D_low2_prostate_incidence2_uci tt if tt<=5 , noobs ab(30)  //Risk difference of low HDL-C vs no low HDL-C 5 years
+list D_low2_prostate_incidence2 D_low2_prostate_incidence2_lci D_low2_prostate_incidence2_uci tt if tt<=10 , noobs ab(30)   //Risk difference of low HDL-C vs no low HDL-C 10 years
+
+
+
+
+
+
+
+
+//**** Death due to causes other than prostate cancer*******
+
+gen competing_risk_otherdeath = 0    // 0 = no prostate cancer or other cancer, no death; 1 = prostate cancer; 2 = other cancers or any death
+replace competing_risk_otherdeath = 1 if prostate ==1 
+replace competing_risk_otherdeath = 2 if death==1 & prostate ==0
+
+gen competing_risk_otherdeath_date = date("2019, 7, 31", "YMD")
+replace competing_risk_otherdeath_date = DOD if competing_risk_otherdeath==2
+replace competing_risk_otherdeath_date = prostate_date if competing_risk_otherdeath==1
+format %tdDD/NN/CCYY competing_risk_otherdeath_date
+
+tab competing_risk_otherdeath if s_40021_0_0!="SCOT" & sex==1
+
+
+
+// Below are Standsurv codes to plot the "causes other than prostate cancer"
+stset competing_risk_otherdeath_date [pw=HAW], failure(competing_risk_otherdeath==1) origin(time assessment_date) id(id) scale(365.25)    
+stpm2 MetSyn_bi age_cat2 age_cat3 age_cat4 age_cat5 ethnic4 ethnic3 ethnic2 qdi2 qdi3 qdi4 qdi5 smoking3 smoking2 fruit_freq processedmeat_freq3 processedmeat_freq2 bmi ipaq3 ipaq2 ever_PSA father_prostate sibling_prostate crp_cat IGF testosterone if  s_40021_0_0!="SCOT", scale(h) df(4) eform
+estimates store prostate_incidence
+
+stset competing_risk_otherdeath_date [pw=HAW], failure(competing_risk_otherdeath==2) origin(time assessment_date) id(id) scale(365.25)    
+stpm2 MetSyn_bi age_cat2 age_cat3 age_cat4 age_cat5 ethnic4 ethnic3 ethnic2 qdi2 qdi3 qdi4 qdi5 smoking3 smoking2 fruit_freq processedmeat_freq3 processedmeat_freq2 bmi ipaq3 ipaq2 ever_PSA father_prostate sibling_prostate crp_cat IGF testosterone if  s_40021_0_0!="SCOT", scale(h) df(4) eform
+estimates store comp_incidence
+
+range tt 0 15 30
+
+standsurv if ethnic4!=. & smoking3!=. & qdi2!=. & fruit_freq!=. & ever_PSA!=. & father_prostate!=. & processedmeat_freq3!=. & sibling_prostate!=. & ipaq3!=. & crp_cat!=. & bmi!=. & IGF!=. & testosterone!=., crmodels(prostate_incidence comp_incidence) cif ci timevar(tt) atvar(F) verbose 
 // Plot prostate_incidence 
 twoway  (rarea F_prostate_incidence_lci F_prostate_incidence_uci tt, color(red%30)) ///
         (line F_prostate_incidence tt, color(red)) ///
@@ -839,7 +1186,7 @@ twoway  (rarea F_prostate_incidence_lci F_prostate_incidence_uci tt, color(red%3
 		saving(prostate_incidence, replace) nodraw
 			
 	
-standsurv if ethnic4!=. & smoking3!=. & qdi2!=. & fruit_freq!=. & ever_PSA!=. & father_prostate!=. & processedmeat_freq3!=. & sibling_prostate!=. & ipaq3!=. & crp_cat!=. & bmi!=. & medications4!=. & IGF!=. & testosterone!=., crmodels(prostate_incidence comp_incidence) cif ci timevar(tt) verbose ///
+standsurv if ethnic4!=. & smoking3!=. & qdi2!=. & fruit_freq!=. & ever_PSA!=. & father_prostate!=. & processedmeat_freq3!=. & sibling_prostate!=. & ipaq3!=. & crp_cat!=. & bmi!=. & IGF!=. & testosterone!=., crmodels(prostate_incidence comp_incidence) cif ci timevar(tt) verbose ///
     at1(MetSyn_bi 1) at2(MetSyn_bi 0) atvars(F_Met1 F_Met2)  atref(2) ///
     contrast(ratio) contrastvars(r1)
 	
@@ -866,91 +1213,36 @@ twoway  (rarea F_Met1_comp_incidence_lci F_Met1_comp_incidence_uci tt, color(red
 		saving(metabolic_othercancer_death, replace) nodraw
 
 
-stset competing_risk_date [pw=totalweight], failure(competing_risk==1) origin(time assessment_date) id(id) scale(365.25)    
-stpm2 obese DM hypertension hyperlipidemia low_HDL age_cat2 age_cat3 age_cat4 age_cat5 ethnic4 ethnic3 ethnic2 qdi2 qdi3 qdi4 qdi5 smoking3 smoking2 fruit_freq processedmeat_freq3 processedmeat_freq2 bmi medications4 medications3 medications2 ipaq3 ipaq2 ever_PSA father_prostate sibling_prostate crp_cat IGF testosterone, scale(h) df(4) eform
+stset competing_risk_date_new [pw=HAW], failure(prostate==1) origin(time assessment_date) id(id) scale(365.25)    
+stpm2 obese DM hypertension hyperlipidemia low_HDL age_cat2 age_cat3 age_cat4 age_cat5 ethnic4 ethnic3 ethnic2 qdi2 qdi3 qdi4 qdi5 smoking3 smoking2 fruit_freq processedmeat_freq3 processedmeat_freq2 bmi ipaq3 ipaq2 ever_PSA father_prostate sibling_prostate crp_cat IGF testosterone if  s_40021_0_0!="SCOT", scale(h) df(4) eform
 estimates store prostate_incidence2
 
-stset competing_risk_date [pw=totalweight], failure(competing_risk==2) origin(time assessment_date) id(id) scale(365.25)    
-stpm2 obese DM hypertension hyperlipidemia low_HDL age_cat2 age_cat3 age_cat4 age_cat5 ethnic4 ethnic3 ethnic2 qdi2 qdi3 qdi4 qdi5 smoking3 smoking2 fruit_freq processedmeat_freq3 processedmeat_freq2 bmi medications4 medications3 medications2 ipaq3 ipaq2 ever_PSA father_prostate sibling_prostate crp_cat IGF testosterone, scale(h) df(4) eform
+stset competing_risk_date_new [pw=HAW], failure(prostate==0) origin(time assessment_date) id(id) scale(365.25)    
+stpm2 obese DM hypertension hyperlipidemia low_HDL age_cat2 age_cat3 age_cat4 age_cat5 ethnic4 ethnic3 ethnic2 qdi2 qdi3 qdi4 qdi5 smoking3 smoking2 fruit_freq processedmeat_freq3 processedmeat_freq2 bmi ipaq3 ipaq2 ever_PSA father_prostate sibling_prostate crp_cat IGF testosterone if  s_40021_0_0!="SCOT", scale(h) df(4) eform
 estimates store comp_incidence2
 
 
-// Plot prostate cancer incidence based on individual metabolic syndrome component - DM
-standsurv if ethnic4!=. & smoking3!=. & qdi2!=. & fruit_freq!=. & ever_PSA!=. & father_prostate!=. & processedmeat_freq3!=. & sibling_prostate!=. & ipaq3!=. & crp_cat!=. & bmi!=. & medications4!=. & IGF!=. & testosterone!=., crmodels(prostate_incidence2 comp_incidence2) cif ci timevar(tt) verbose at1(DM 1) at2(DM 0) atvars(F_DM1 F_DM2) atref(2) contrast(ratio) contrastvars(R_DM)
-	
-twoway  (rarea F_DM1_prostate_incidence2_lci F_DM1_prostate_incidence2_uci tt, color(red%30)) ///
-        (line F_DM1_prostate_incidence2 tt, color(red)) ///
-        (rarea F_DM2_prostate_incidence2_lci F_DM2_prostate_incidence2_uci tt, color(blue%30)) ///
-		(line F_DM2_prostate_incidence2 tt, color(blue)) ///
-         , legend(order(2 "Diabetes" 4 "No Diabetes") cols(1) ring(0) pos(11)) ///
-		ylabel(, angle(h) format(%3.2f)) ///
-		xtitle("Follow-Up (Years)") ytitle("Adjusted cause-specific cumulative incidence") ///
-		name(metabolic_DM, replace) ///
-		saving(metabolic_DM, replace) nodraw
-	
-standsurv if ethnic4!=. & smoking3!=. & qdi2!=. & fruit_freq!=. & ever_PSA!=. & father_prostate!=. & processedmeat_freq3!=. & sibling_prostate!=. & ipaq3!=. & crp_cat!=. & bmi!=. & medications4!=. & IGF!=. & testosterone!=., crmodels(prostate_incidence2 comp_incidence2) cif ci timevar(tt) verbose ///
-    at1(obese 1) at2(obese 0) atvars(F_ob1 F_ob2)  atref(2) ///
-    contrast(ratio) contrastvars(R_ob)
-	
-// Plot prostate cancer incidence based on individual metabolic syndrome component - obesity
-twoway  (rarea F_ob1_prostate_incidence2_lci F_ob1_prostate_incidence2_uci tt, color(red%30)) ///
-        (line F_ob1_prostate_incidence2 tt, color(red)) ///
-        (rarea F_ob2_prostate_incidence2_lci F_ob2_prostate_incidence2_uci tt, color(blue%30)) ///
-		(line F_ob2_prostate_incidence2 tt, color(blue)) ///
-         , legend(order(2 "Obesity" 4 "No Obesity") cols(1) ring(0) pos(11)) ///
-		ylabel(, angle(h) format(%3.2f)) ///
-		xtitle("Follow-Up (Years)") ytitle("Adjusted cause-specific cumulative incidence") ///
-		name(metabolic_obesity, replace) ///
-		saving(metabolic_obesity, replace) nodraw
-						
-standsurv if ethnic4!=. & smoking3!=. & qdi2!=. & fruit_freq!=. & ever_PSA!=. & father_prostate!=. & processedmeat_freq3!=. & sibling_prostate!=. & ipaq3!=. & crp_cat!=. & bmi!=. & medications4!=. & IGF!=. & testosterone!=., crmodels(prostate_incidence2 comp_incidence2) cif ci timevar(tt) verbose ///
-    at1(hypertension 1) at2(hypertension 0) atvars(F_HT1 F_HT2)  atref(2) ///
-    contrast(ratio) contrastvars(r_HT)
-	
-// Plot prostate cancer incidence based on individual metabolic syndrome component - hypertension
-twoway  (rarea F_HT1_prostate_incidence2_lci F_HT1_prostate_incidence2_uci tt, color(red%30)) ///
-        (line F_HT1_prostate_incidence2 tt, color(red)) ///
-        (rarea F_HT2_prostate_incidence2_lci F_HT2_prostate_incidence2_uci tt, color(blue%30)) ///
-		(line F_HT2_prostate_incidence2 tt, color(blue)) ///
-         , legend(order(2 "Hypertension" 4 "No Hypertension") cols(1) ring(0) pos(11)) ///
-		ylabel(, angle(h) format(%3.2f)) ///
-		xtitle("Follow-Up (Years)") ytitle("Adjusted cause-specific cumulative incidence") ///
-		name(metabolic_hypertension, replace) ///
-		saving(metabolic_hypertension, replace) nodraw
 
-				
-	
-standsurv if ethnic4!=. & smoking3!=. & qdi2!=. & fruit_freq!=. & ever_PSA!=. & father_prostate!=. & processedmeat_freq3!=. & sibling_prostate!=. & ipaq3!=. & crp_cat!=. & bmi!=. & medications4!=. & IGF!=. & testosterone!=., crmodels(prostate_incidence2 comp_incidence2) cif ci timevar(tt) verbose ///
-    at1(hyperlipidemia 1) at2(hyperlipidemia 0) atvars(F_HL1 F_HL2)  atref(2) ///
-    contrast(ratio) contrastvars(r_HL)
-	
-// Plot prostate cancer incidence based on individual metabolic syndrome component - hyperlipidemia
-twoway  (rarea F_HL1_prostate_incidence2_lci F_HL1_prostate_incidence2_uci tt, color(red%30)) ///
-        (line F_HL1_prostate_incidence2 tt, color(red)) ///
-        (rarea F_HL2_prostate_incidence2_lci F_HL2_prostate_incidence2_uci tt, color(blue%30)) ///
-		(line F_HL2_prostate_incidence2 tt, color(blue)) ///
-         , legend(order(2 "Hyperlipidemia" 4 "No Hyperlipidemia") cols(1) ring(0) pos(11)) ///
-		ylabel(, angle(h) format(%3.2f)) ///
-		xtitle("Follow-Up (Years)") ytitle("Adjusted cause-specific cumulative incidence") ///
-		name(metabolic_hyperlipidemia, replace) ///
-		saving(metabolic_hyperlipidemia, replace) nodraw
 
-			
-standsurv if ethnic4!=. & smoking3!=. & qdi2!=. & fruit_freq!=. & ever_PSA!=. & father_prostate!=. & processedmeat_freq3!=. & sibling_prostate!=. & ipaq3!=. & crp_cat!=. & bmi!=. & medications4!=. & IGF!=. & testosterone!=., crmodels(prostate_incidence2 comp_incidence2) cif ci timevar(tt) verbose ///
-    at1(low_HDL 1) at2(low_HDL 0) atvars(F_low1 F_low2)  atref(2) ///
-    contrast(ratio) contrastvars(r_low)
-	
-// Plot prostate cancer incidence based on individual metabolic syndrome component - low HDL level
-twoway  (rarea F_low1_prostate_incidence2_lci F_low1_prostate_incidence2_uci tt, color(red%30)) ///
-        (line F_low1_prostate_incidence2 tt, color(red)) ///
-        (rarea F_low2_prostate_incidence2_lci F_low2_prostate_incidence2_uci tt, color(blue%30)) ///
-		(line F_low2_prostate_incidence2 tt, color(blue)) ///
-         , legend(order(2 "Low HDL" 4 "HDL Not Low") cols(1) ring(0) pos(11)) ///
-		ylabel(, angle(h) format(%3.2f)) ///
-		xtitle("Follow-Up (Years)") ytitle("Adjusted cause-specific cumulative incidence") ///
-		name(metabolic_lowHDL, replace) ///
-		saving(metabolic_lowHDL, replace) nodraw
-restore
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 /* Assessing IPTW overlap by hand: metabolic syndrome*/
 sort MetSyn_bi
