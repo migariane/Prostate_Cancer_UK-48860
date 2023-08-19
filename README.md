@@ -1,7 +1,8 @@
 ## UK Biobank Research Project 48860: 
 ## Metabolic syndrome paradox in prostate cancer: A UK Biobank prospective cohort study
 
-### Shing Fung Lee 1 2, Maja Nikšić 3,4 , Miguel Angel Luque-Fernandez 3, 5 (Senior and corresponding author)
+### Shing Fung Lee 1 2, Maja Nikšić 3,4, Miguel Angel Luque-Fernandez 3,5 (Senior and corresponding author)
+
 ### Authors' affiliations
   1 Department of Radiation Oncology, National University Cancer Institute, Singapore  
   2 Department of Clinical Oncology, Tuen Mun Hospital, New Territories West Cluster, Hong Kong  
@@ -18,4 +19,4 @@ The relationship between metabolic syndrome and prostate cancer risk remains unc
 
 Keywords: Prostate Cancer; Metabolic Syndrome; Risk Factors; Lifestyle; Diet; Exercise.  
 
-![image](Figure 1.pdf)
+![Figure Link](https://github.com/migariane/Prostate_Cancer_UK-48860/blob/master/Figure 1.pdf)  
