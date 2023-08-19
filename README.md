@@ -19,4 +19,4 @@ The relationship between metabolic syndrome and prostate cancer risk remains unc
 
 Keywords: Prostate Cancer; Metabolic Syndrome; Risk Factors; Lifestyle; Diet; Exercise.  
 
-![Figure Link](https://github.com/migariane/Prostate_Cancer_UK-48860/blob/master/Figure 1.pdf)  
+![Figure Link](https://github.com/migariane/Prostate_Cancer_UK-48860/blob/main/Figure 1.pdf)  
